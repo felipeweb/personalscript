@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"net/url"
 	"os"
 
@@ -22,7 +24,7 @@ func main() {
 	tokenSource := oauth2.StaticTokenSource(&oauth2.Token{
 		AccessToken: key,
 	})
-	oauthClient := oauth2.NewClient(oauth2.NoContext, tokenSource)
+	oauthClient := oauth2.NewClient(context.Background(), tokenSource)
 	client := godo.NewClient(oauthClient)
 	if apiURL != "" {
 		var err error
@@ -31,16 +33,20 @@ func main() {
 			return
 		}
 	}
-	droplets, _, err := client.Droplets.List(nil)
+
+	options := godo.ListOptions{PerPage: 1000}
+
+	droplets, _, err := client.Droplets.List(context.Background(), &options)
 	if err != nil {
 		return
 	}
 	for _, dr := range droplets {
+		fmt.Println(">", dr.Name)
 		if strings.Contains(dr.Name, "gofn") {
-			action, _, err := client.DropletActions.Shutdown(dr.ID)
+			action, _, err := client.DropletActions.Shutdown(context.Background(), dr.ID)
 			if err != nil {
 				// Power off force Shutdown
-				action, _, err = client.DropletActions.PowerOff(dr.ID)
+				action, _, err = client.DropletActions.PowerOff(context.Background(), dr.ID)
 				if err != nil {
 					return
 				}
@@ -59,9 +65,10 @@ func main() {
 						case <-quit:
 							return
 						default:
-							d, _, err := client.DropletActions.Get(drID, act.ID)
+							d, _, err := client.DropletActions.Get(context.Background(), drID, act.ID)
 							if err != nil {
 								errs <- err
+								fmt.Println(err.Error())
 								return
 							}
 							if d.Status == "completed" {
@@ -73,7 +80,10 @@ func main() {
 				}()
 				select {
 				case action = <-ac:
-					_, err = client.Droplets.Delete(drID)
+					_, err = client.Droplets.Delete(context.Background(), drID)
+					if err != nil {
+						fmt.Println(err.Error())
+					}
 					wait.Done()
 					return
 				case err = <-errs:
